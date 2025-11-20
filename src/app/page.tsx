@@ -21,7 +21,7 @@ export default function LandingPage() {
             <main className="flex-1 flex flex-col items-center justify-center text-center px-4 pt-24 pb-12 space-y-8 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/20 via-background to-background">
                 <div className="space-y-4 max-w-3xl animate-in fade-in slide-in-from-bottom-4 duration-1000">
                     <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-purple-600">
-                        Next-Gen AI Tools
+                        Next-Gen Tools
                     </h1>
                     <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto">
                         Empower your workflow with our suite of intelligent, modern, and efficient tools. Built for creators, developers, and everyone in between.
