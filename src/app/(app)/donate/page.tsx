@@ -23,9 +23,9 @@ export default function DonatePage() {
                 <div className="inline-flex p-4 rounded-full bg-red-100 text-red-600 mb-4">
                     <Heart size={48} fill="currentColor" />
                 </div>
-                <h1 className="text-4xl font-bold tracking-tight">Support Our Work</h1>
+                <h1 className="text-4xl font-bold tracking-tight">Support My Work</h1>
                 <p className="text-xl text-muted-foreground">
-                    If you find these tools useful, consider supporting us to keep the servers running and development active.
+                    If you find these tools useful, consider supporting me to keep the servers running and development active.
                 </p>
             </div>
 
