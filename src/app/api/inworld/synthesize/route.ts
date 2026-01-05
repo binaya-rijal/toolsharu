@@ -31,7 +31,12 @@ export async function POST(request: NextRequest) {
       timestampType: body.timestampType || "WORD"
     };
     
-    console.log('Request body:', JSON.stringify(requestBody));
+    console.log('=== SYNTHESIS REQUEST ===');
+    console.log('Endpoint:', endpoint);
+    console.log('Voice ID:', voiceId);
+    console.log('Text length:', body.text.length);
+    console.log('Text preview:', body.text.substring(0, 100));
+    console.log('Full request body:', JSON.stringify(requestBody, null, 2));
     
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -43,7 +48,9 @@ export async function POST(request: NextRequest) {
     });
 
     const responseText = await response.text();
-    console.log('Synthesis response:', response.status, responseText.substring(0, 200));
+    console.log('=== SYNTHESIS RESPONSE ===');
+    console.log('Status:', response.status);
+    console.log('Response preview:', responseText.substring(0, 300));
 
     if (!response.ok) {
       return NextResponse.json({ 
