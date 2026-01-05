@@ -4,7 +4,7 @@ export default function ITTSVoiceGeneratorPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">ITTS Voice Generator</h1>
+        <h1 className="text-3xl font-bold tracking-tight"> Voice Generator</h1>
         <p className="text-muted-foreground mt-2">
           Generate realistic speech using Inworld AI voices. Configure your API key to get started.
         </p>

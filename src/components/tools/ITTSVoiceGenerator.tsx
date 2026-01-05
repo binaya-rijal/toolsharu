@@ -680,7 +680,7 @@ export default function ITTSVoiceGenerator() {
             <h2 className="font-semibold text-lg flex items-center gap-2">
               <Volume2 size={20} /> Text to Speech
               <span className="ml-auto text-sm font-normal text-muted-foreground">
-                Model: inworld-tts-1-max
+               Yoohoooo!!
               </span>
             </h2>
             
