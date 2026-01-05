@@ -149,6 +149,9 @@ export default function ITTSVoiceGenerator() {
 
   const synthesizeText = async (textToSynthesize: string, voiceName: string): Promise<string | null> => {
     try {
+      console.log('Synthesizing text:', textToSynthesize);
+      console.log('Using voice:', voiceName);
+      
       const response = await fetch('/api/inworld/synthesize', {
         method: 'POST',
         headers: {
@@ -170,6 +173,7 @@ export default function ITTSVoiceGenerator() {
       }
 
       const data = await response.json();
+      console.log('Synthesis response received');
       
       if (data.audioContent) {
         const audioBlob = base64ToBlob(data.audioContent, 'audio/mp3');
