@@ -5,9 +5,48 @@ const INWORLD_VOICES_API = 'https://api.inworld.ai/voices/v1';
 export async function GET(request: NextRequest) {
   const apiKey = request.headers.get('x-api-key');
   const workspaceId = request.headers.get('x-workspace-id');
+  const voiceName = request.headers.get('x-voice-name');
 
-  if (!apiKey || !workspaceId) {
-    return NextResponse.json({ error: 'Missing API key or workspace ID' }, { status: 400 });
+  if (!apiKey) {
+    return NextResponse.json({ error: 'Missing API key' }, { status: 400 });
+  }
+
+  // If voiceName is provided, get specific voice details
+  if (voiceName) {
+    try {
+      const endpoint = `${INWORLD_VOICES_API}/${voiceName}`;
+      console.log('Fetching voice details from:', endpoint);
+      
+      const response = await fetch(endpoint, {
+        method: 'GET',
+        headers: {
+          'Authorization': apiKey,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const responseText = await response.text();
+      console.log(`Response ${response.status}:`, responseText.substring(0, 500));
+      
+      if (!response.ok) {
+        return NextResponse.json({ 
+          error: `Failed to fetch voice details: ${response.status}`,
+          details: responseText 
+        }, { status: response.status });
+      }
+
+      const data = JSON.parse(responseText);
+      return NextResponse.json(data);
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      console.error('Fetch voice details error:', errorMsg);
+      return NextResponse.json({ error: errorMsg }, { status: 500 });
+    }
+  }
+
+  // Otherwise, get all voices in workspace
+  if (!workspaceId) {
+    return NextResponse.json({ error: 'Missing workspace ID' }, { status: 400 });
   }
 
   try {
@@ -17,7 +56,7 @@ export async function GET(request: NextRequest) {
     const response = await fetch(endpoint, {
       method: 'GET',
       headers: {
-        'Authorization': `Basic ${apiKey}`,
+        'Authorization': apiKey,
         'Content-Type': 'application/json',
       },
     });
@@ -53,13 +92,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const endpoint = `${INWORLD_VOICES_API}/workspaces/${workspaceId}/voices`;
-    console.log('Creating voice at:', endpoint);
+    // Use the :clone endpoint for voice cloning
+    const endpoint = `${INWORLD_VOICES_API}/workspaces/${workspaceId}/voices:clone`;
+    console.log('Cloning voice at:', endpoint);
     
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        'Authorization': `Basic ${apiKey}`,
+        'Authorization': apiKey,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
@@ -69,14 +109,18 @@ export async function POST(request: NextRequest) {
     console.log('Clone response:', response.status, responseText.substring(0, 500));
 
     if (!response.ok) {
-      return NextResponse.json({ error: `Failed to clone voice: ${response.status}`, details: responseText }, { status: response.status });
+      return NextResponse.json({ 
+        error: `Failed to clone voice: ${response.status}`, 
+        details: responseText 
+      }, { status: response.status });
     }
 
     const data = JSON.parse(responseText);
     return NextResponse.json(data);
   } catch (e) {
     console.error('Clone voice exception:', e);
-    return NextResponse.json({ error: 'Failed to clone voice' }, { status: 500 });
+    const errorMsg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: errorMsg }, { status: 500 });
   }
 }
 
@@ -96,7 +140,7 @@ export async function DELETE(request: NextRequest) {
     const response = await fetch(endpoint, {
       method: 'DELETE',
       headers: {
-        'Authorization': `Basic ${apiKey}`,
+        'Authorization': apiKey,
       },
     });
 

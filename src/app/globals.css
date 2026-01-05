@@ -109,8 +109,19 @@
 
   body {
     @apply bg-background text-foreground;
-    user-select: none;
-    -webkit-user-select: none;
+  }
+
+  /* Allow text selection for input fields and editable content */
+  input,
+  textarea,
+  [contenteditable="true"] {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  /* Add pointer cursor to all buttons */
+  button {
+    cursor: pointer;
   }
 
   /* Hide scrollbar for Chrome, Safari and Opera */
