@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { IdCard, ArrowRight, Receipt } from "lucide-react";
+import { IdCard, ArrowRight, Receipt, Film } from "lucide-react";
 
 export default function Home() {
   return (
@@ -34,6 +34,21 @@ export default function Home() {
           </div>
           <p className="mt-4 text-muted-foreground text-sm">
             Create professional tuition fee receipts with customizable templates and automatic calculations.
+          </p>
+          <div className="mt-4 flex items-center text-sm font-medium text-primary">
+            Open Tool <ArrowRight size={16} className="ml-1 transition-transform group-hover:translate-x-1" />
+          </div>
+        </Link>
+
+        <Link href="/tools/sprite-sheet-animator" className="group relative overflow-hidden rounded-xl border bg-card p-6 hover:shadow-lg transition-all">
+          <div className="flex items-center gap-4">
+            <div className="p-3 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+              <Film size={24} />
+            </div>
+            <h3 className="font-semibold text-lg">Sprite Sheet Animator</h3>
+          </div>
+          <p className="mt-4 text-muted-foreground text-sm">
+            Animate sprite sheets frame by frame. Upload, configure, and play your sprite animations.
           </p>
           <div className="mt-4 flex items-center text-sm font-medium text-primary">
             Open Tool <ArrowRight size={16} className="ml-1 transition-transform group-hover:translate-x-1" />

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { IdCard, ArrowRight, Receipt } from "lucide-react";
+import { IdCard, ArrowRight, Receipt, Volume2 } from "lucide-react";
 
 export default function GeneratorToolsPage() {
     return (
@@ -34,6 +34,21 @@ export default function GeneratorToolsPage() {
                     </div>
                     <p className="mt-4 text-muted-foreground text-sm">
                         Create professional tuition fee receipts with customizable templates and automatic calculations.
+                    </p>
+                    <div className="mt-4 flex items-center text-sm font-medium text-primary">
+                        Open Tool <ArrowRight size={16} className="ml-1 transition-transform group-hover:translate-x-1" />
+                    </div>
+                </Link>
+
+                <Link href="/tools/itts-voice-generator" className="group relative overflow-hidden rounded-xl border bg-card p-6 hover:shadow-lg transition-all">
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                            <Volume2 size={24} />
+                        </div>
+                        <h3 className="font-semibold text-lg">ITTS Voice Generator</h3>
+                    </div>
+                    <p className="mt-4 text-muted-foreground text-sm">
+                        Generate realistic speech using Inworld AI voices. Clone voices and synthesize audio instantly.
                     </p>
                     <div className="mt-4 flex items-center text-sm font-medium text-primary">
                         Open Tool <ArrowRight size={16} className="ml-1 transition-transform group-hover:translate-x-1" />

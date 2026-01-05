@@ -6,13 +6,13 @@ export default function LandingPage() {
     return (
         <div className="min-h-screen flex flex-col bg-background text-foreground">
             {/* Header */}
-            <header className="w-full p-6 flex justify-between items-center border-b bg-card/50 backdrop-blur-sm fixed top-0 z-50">
-                <div className="font-bold text-2xl tracking-tight">ToolsHaru.com</div>
+            <header className="w-full p-4 md:p-6 flex justify-between items-center border-b bg-card/50 backdrop-blur-sm fixed top-0 z-50">
+                <div className="font-bold text-xl md:text-2xl tracking-tight">ToolsHaru.com</div>
                 <Link
                     href="/donate"
-                    className="flex items-center gap-2 px-4 py-2 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors font-medium"
+                    className="flex items-center gap-2 px-3 py-1.5 md:px-4 md:py-2 rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-colors font-medium text-sm md:text-base"
                 >
-                    <Heart size={18} fill="currentColor" />
+                    <Heart size={16} className="md:w-[18px] md:h-[18px]" fill="currentColor" />
                     <span>Donate</span>
                 </Link>
             </header>
@@ -20,18 +20,18 @@ export default function LandingPage() {
             {/* Hero Section */}
             <main className="flex-1 flex flex-col items-center justify-center text-center px-4 pt-24 pb-12 space-y-8 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-primary/20 via-background to-background">
                 <div className="space-y-4 max-w-3xl animate-in fade-in slide-in-from-bottom-4 duration-1000">
-                    <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-purple-600">
+                    <h1 className="text-4xl md:text-7xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-purple-600">
                         Next-Gen Tools
                     </h1>
-                    <p className="text-xl md:text-2xl text-muted-foreground max-w-2xl mx-auto">
+                    <p className="text-lg md:text-2xl text-muted-foreground max-w-2xl mx-auto">
                         Empower your workflow with our suite of intelligent, modern, and efficient tools. Built for creators, developers, and everyone in between.
                     </p>
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-4 animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-200">
+                <div className="flex flex-col sm:flex-row gap-4 animate-in fade-in slide-in-from-bottom-8 duration-1000 delay-200 w-full sm:w-auto">
                     <Link
                         href="/dashboard"
-                        className="group flex items-center gap-2 px-8 py-4 rounded-full bg-primary text-primary-foreground font-bold text-lg hover:shadow-lg hover:shadow-primary/25 transition-all hover:-translate-y-1"
+                        className="group flex items-center justify-center gap-2 px-8 py-4 rounded-full bg-primary text-primary-foreground font-bold text-lg hover:shadow-lg hover:shadow-primary/25 transition-all hover:-translate-y-1 w-full sm:w-auto"
                     >
                         View Tools
                         <ArrowRight size={20} className="transition-transform group-hover:translate-x-1" />
@@ -39,7 +39,7 @@ export default function LandingPage() {
                 </div>
 
                 {/* Features Grid Preview */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl w-full mt-16 text-left animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-300">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl w-full mt-12 md:mt-16 text-left animate-in fade-in slide-in-from-bottom-12 duration-1000 delay-300">
                     <div className="p-6 rounded-2xl bg-card border hover:border-primary/50 transition-colors">
                         <div className="h-12 w-12 rounded-lg bg-blue-500/10 flex items-center justify-center mb-4 text-blue-500">
                             <Zap size={24} />
@@ -64,12 +64,12 @@ export default function LandingPage() {
                 </div>
 
                 {/* Additional Section */}
-                <div className="w-full max-w-5xl mt-24 text-left space-y-8 animate-in fade-in slide-in-from-bottom-16 duration-1000 delay-500">
-                    <div className="text-center mb-12">
-                        <h2 className="text-3xl font-bold tracking-tight">Everything You Need</h2>
+                <div className="w-full max-w-5xl mt-16 md:mt-24 text-left space-y-8 animate-in fade-in slide-in-from-bottom-16 duration-1000 delay-500">
+                    <div className="text-center mb-8 md:mb-12">
+                        <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Everything You Need</h2>
                         <p className="text-muted-foreground mt-4">A growing collection of utilities designed to make your life easier.</p>
                     </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 md:gap-8">
                         <div className="flex gap-4 items-start">
                             <div className="p-2 rounded-lg bg-primary/10 text-primary mt-1">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" /></svg>
