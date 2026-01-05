@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       const response = await fetch(endpoint, {
         method: 'GET',
         headers: {
-          'Authorization': apiKey,
+          'Authorization': `Basic ${apiKey}`,
           'Content-Type': 'application/json',
         },
       });
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
     const response = await fetch(endpoint, {
       method: 'GET',
       headers: {
-        'Authorization': apiKey,
+        'Authorization': `Basic ${apiKey}`,
         'Content-Type': 'application/json',
       },
     });
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
-        'Authorization': apiKey,
+        'Authorization': `Basic ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
@@ -140,7 +140,7 @@ export async function DELETE(request: NextRequest) {
     const response = await fetch(endpoint, {
       method: 'DELETE',
       headers: {
-        'Authorization': apiKey,
+        'Authorization': `Basic ${apiKey}`,
       },
     });
 
