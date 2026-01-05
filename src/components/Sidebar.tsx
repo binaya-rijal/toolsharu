@@ -14,7 +14,7 @@ const navigation = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
 
   return (
     <div className={cn("flex flex-col h-screen bg-card border-r transition-all duration-300", isOpen ? "w-64" : "w-20")}>
