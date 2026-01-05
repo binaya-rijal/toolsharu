@@ -66,6 +66,14 @@ export default function ITTSVoiceGenerator() {
   const [voiceDetails, setVoiceDetails] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
 
+  // Confirmation dialog
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+
   // Global audio controls
   const [globalVolume, setGlobalVolume] = useState(1);
   const [globalSpeed, setGlobalSpeed] = useState(1);
@@ -426,27 +434,34 @@ export default function ITTSVoiceGenerator() {
   };
 
   const deleteVoice = async (voiceName: string) => {
-    if (!confirm("Are you sure you want to delete this voice?")) return;
-    
-    try {
-      const response = await fetch('/api/inworld/voices', {
-        method: 'DELETE',
-        headers: {
-          'x-api-key': apiKey,
-          'x-voice-name': voiceName,
-        },
-      });
+    const performDelete = async () => {
+      try {
+        const response = await fetch('/api/inworld/voices', {
+          method: 'DELETE',
+          headers: {
+            'x-api-key': apiKey,
+            'x-voice-name': voiceName,
+          },
+        });
 
-      if (!response.ok) {
-        throw new Error(`Failed to delete voice: ${response.status}`);
+        if (!response.ok) {
+          throw new Error(`Failed to delete voice: ${response.status}`);
+        }
+
+        showSuccess("Voice deleted successfully!");
+        setSelectedVoice("");
+        await fetchVoices();
+      } catch (err) {
+        showError(err instanceof Error ? err.message : "Failed to delete voice");
       }
+    };
 
-      showSuccess("Voice deleted successfully!");
-      setSelectedVoice("");
-      await fetchVoices();
-    } catch (err) {
-      showError(err instanceof Error ? err.message : "Failed to delete voice");
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Voice',
+      message: 'Are you sure you want to delete this voice? This action cannot be undone.',
+      onConfirm: performDelete,
+    });
   };
 
   const getVoiceDetails = async (voiceName: string) => {
@@ -500,6 +515,39 @@ export default function ITTSVoiceGenerator() {
       {successMessage && (
         <div className="fixed top-4 right-4 bg-green-600 text-white p-4 rounded-lg shadow-lg z-50 flex items-center gap-2 max-w-md animate-in slide-in-from-top-2">
           <span className="text-sm">{successMessage}</span>
+        </div>
+      )}
+
+      {/* Confirmation Dialog */}
+      {confirmDialog.isOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card border rounded-xl p-6 w-full max-w-md space-y-4 animate-in zoom-in-95 shadow-2xl">
+            <div className="space-y-2">
+              <h3 className="font-semibold text-lg flex items-center gap-2">
+                <AlertCircle size={20} className="text-destructive" />
+                {confirmDialog.title}
+              </h3>
+              <p className="text-sm text-muted-foreground">{confirmDialog.message}</p>
+            </div>
+            
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+                className="flex-1 px-4 py-2 border rounded-md hover:bg-accent transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  confirmDialog.onConfirm();
+                  setConfirmDialog({ ...confirmDialog, isOpen: false });
+                }}
+                className="flex-1 px-4 py-2 bg-destructive text-destructive-foreground rounded-md hover:bg-destructive/90 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
