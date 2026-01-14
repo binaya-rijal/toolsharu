@@ -1263,7 +1263,7 @@ export default function TextToSpeechGenerator() {
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 maxLength={MAX_CHAR_LIMIT}
-                className="min-h-[200px] w-full p-4 pr-14 rounded-md border bg-background focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                className="min-h-[200px] w-full p-4 pl-14 rounded-md border bg-background focus:outline-none focus:ring-2 focus:ring-primary resize-none"
                 placeholder="Enter text to generate speech (max 6000 characters)... or click the mic icon to record"
               />
               {/* Voice Recording Button */}
@@ -1271,7 +1271,7 @@ export default function TextToSpeechGenerator() {
                 onClick={toggleRecording}
                 disabled={isTranscribing}
                 className={cn(
-                  "absolute top-3 right-3 p-2 rounded-full transition-all duration-200",
+                  "absolute bottom-3 left-3 p-2 rounded-full transition-all duration-200",
                   isRecording 
                     ? "bg-red-500 text-white animate-pulse shadow-lg shadow-red-500/50" 
                     : isTranscribing 
@@ -1290,13 +1290,13 @@ export default function TextToSpeechGenerator() {
               </button>
               {/* Recording indicator */}
               {isRecording && (
-                <div className="absolute top-3 right-14 flex items-center gap-2 text-red-500 text-xs font-medium animate-pulse">
+                <div className="absolute bottom-3 left-14 flex items-center gap-2 text-red-500 text-xs font-medium animate-pulse">
                   <span className="w-2 h-2 bg-red-500 rounded-full"></span>
                   Recording...
                 </div>
               )}
               {isTranscribing && (
-                <div className="absolute top-3 right-14 flex items-center gap-2 text-primary text-xs font-medium">
+                <div className="absolute bottom-3 left-14 flex items-center gap-2 text-primary text-xs font-medium">
                   <Loader2 size={12} className="animate-spin" />
                   Transcribing...
                 </div>
