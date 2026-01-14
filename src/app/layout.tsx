@@ -4,6 +4,8 @@ import "./globals.css";
 import DisableContextMenu from "@/components/DisableContextMenu";
 
 
+import Script from "next/script";
+
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
@@ -19,6 +21,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body className={inter.className} suppressHydrationWarning>
+        <Script src="https://js.puter.com/v2/" strategy="afterInteractive" />
         <DisableContextMenu />
         {children}
       </body>

@@ -1,6 +1,6 @@
-import ITTSVoiceGenerator from "@/components/tools/ITTSVoiceGenerator";
+import TextToSpeechGenerator from "@/components/tools/TextToSpeechGenerator";
 
-export default function ITTSVoiceGeneratorPage() {
+export default function TextToSpeechGeneratorPage() {
   return (
     <div className="space-y-6">
       <div>
@@ -9,7 +9,7 @@ export default function ITTSVoiceGeneratorPage() {
           Generate realistic speech using AI. Configure your API key to get started.
         </p>
       </div>
-      <ITTSVoiceGenerator />
+      <TextToSpeechGenerator />
     </div>
   );
 }

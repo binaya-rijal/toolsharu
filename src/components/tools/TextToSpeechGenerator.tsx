@@ -29,10 +29,13 @@ interface GeneratedAudio {
   isGenerating: boolean;
 }
 
-const MAX_CHAR_LIMIT = 6000;
+const MAX_CHAR_LIMIT = 2000;
 const MAX_CONCURRENT = 10;
 
-export default function ITTSVoiceGenerator() {
+type Provider = 'inworld';
+
+export default function TextToSpeechGenerator() {
+  const [provider, setProvider] = useState<Provider>('inworld');
   const [apiKey, setApiKey] = useState("");
   const [workspaceId, setWorkspaceId] = useState("");
   const [text, setText] = useState("");
@@ -79,11 +82,23 @@ export default function ITTSVoiceGenerator() {
   const [globalSpeed, setGlobalSpeed] = useState(1);
 
   useEffect(() => {
-    const savedKey = localStorage.getItem("inworld_api_key");
+    const savedProvider = localStorage.getItem("tts_provider") as Provider;
+    if (savedProvider) setProvider(savedProvider);
+    
+    const savedKey = localStorage.getItem(`${savedProvider || 'inworld'}_api_key`);
     const savedWorkspace = localStorage.getItem("inworld_workspace_id");
     if (savedKey) setApiKey(savedKey);
     if (savedWorkspace) setWorkspaceId(savedWorkspace);
   }, []);
+
+  useEffect(() => {
+    // Load API key when provider changes
+    const savedKey = localStorage.getItem(`${provider}_api_key`);
+    const savedWorkspace = localStorage.getItem("inworld_workspace_id");
+    if (savedKey) setApiKey(savedKey);
+    else setApiKey("");
+    if (provider === 'inworld' && savedWorkspace) setWorkspaceId(savedWorkspace);
+  }, [provider]);
 
   const showError = (message: string) => {
     setError(message);
@@ -96,31 +111,45 @@ export default function ITTSVoiceGenerator() {
   };
 
   const saveConfig = () => {
-    if (!apiKey || !workspaceId) {
-      showError("Please enter both API Key and Workspace ID");
+    if (!apiKey) {
+      showError("Please enter API Key");
       return;
     }
-    localStorage.setItem("inworld_api_key", apiKey);
-    localStorage.setItem("inworld_workspace_id", workspaceId);
+    if (provider === 'inworld' && !workspaceId) {
+      showError("Please enter Workspace ID for Inworld");
+      return;
+    }
+    localStorage.setItem("tts_provider", provider);
+    localStorage.setItem(`${provider}_api_key`, apiKey);
+    if (provider === 'inworld') {
+      localStorage.setItem("inworld_workspace_id", workspaceId);
+    }
     setIsConfigOpen(false);
     fetchVoices();
   };
 
   const fetchVoices = async () => {
-    if (!apiKey || !workspaceId) {
-      showError("Please configure API Key and Workspace ID first");
+    if (!apiKey) {
+      showError("Please configure API Key first");
+      return;
+    }
+    if (provider === 'inworld' && !workspaceId) {
+      showError("Please configure Workspace ID for Inworld");
       return;
     }
     setFetchingVoices(true);
     setError(null);
     
     try {
-      const response = await fetch('/api/inworld/voices', {
+      const endpoint = '/api/inworld/voices';
+      const headers: HeadersInit = {
+        'x-api-key': apiKey,
+        'x-workspace-id': workspaceId,
+      };
+      
+      const response = await fetch(endpoint, {
         method: 'GET',
-        headers: {
-          'x-api-key': apiKey,
-          'x-workspace-id': workspaceId,
-        },
+        headers,
       });
 
       if (!response.ok) {
@@ -130,12 +159,13 @@ export default function ITTSVoiceGenerator() {
 
       const data = await response.json();
       const voiceList = data.voices || [];
+      
       setVoices(voiceList);
       
       if (voiceList.length === 0) {
-        showError("No voices found in workspace. Try cloning a voice first.");
+        showError("No voices found. Try cloning a voice first.");
       } else {
-        showSuccess(`Loaded ${voiceList.length} voice(s) from workspace`);
+        showSuccess(`Loaded ${voiceList.length} voice(s)`);
       }
     } catch (err) {
       console.error("Failed to fetch voices:", err);
@@ -159,33 +189,36 @@ export default function ITTSVoiceGenerator() {
     try {
       console.log('Synthesizing text:', textToSynthesize);
       console.log('Using voice:', voiceName);
+      console.log('Provider:', provider);
       
-      const response = await fetch('/api/inworld/synthesize', {
-        method: 'POST',
-        headers: {
-          'x-api-key': apiKey,
-          'x-voice-name': voiceName,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: textToSynthesize,
-          modelId: "inworld-tts-1-max",
-          timestampType: "WORD"
-        }),
-      });
+      if (provider === 'inworld') {
+        const response = await fetch('/api/inworld/synthesize', {
+          method: 'POST',
+          headers: {
+            'x-api-key': apiKey,
+            'x-voice-name': voiceName,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            text: textToSynthesize,
+            modelId: "inworld-tts-1-max",
+            timestampType: "WORD"
+          }),
+        });
 
-      if (!response.ok) {
-        const errorData = await response.text();
-        console.error("Synthesis error:", errorData);
-        throw new Error(`Failed to generate audio: ${response.status}`);
-      }
+        if (!response.ok) {
+          const errorData = await response.text();
+          console.error("Synthesis error:", errorData);
+          throw new Error(`Failed to generate audio: ${response.status}`);
+        }
 
-      const data = await response.json();
-      console.log('Synthesis response received');
-      
-      if (data.audioContent) {
-        const audioBlob = base64ToBlob(data.audioContent, 'audio/mp3');
-        return URL.createObjectURL(audioBlob);
+        const data = await response.json();
+        console.log('Synthesis response received');
+        
+        if (data.audioContent) {
+          const audioBlob = base64ToBlob(data.audioContent, 'audio/mp3');
+          return URL.createObjectURL(audioBlob);
+        }
       }
       
       throw new Error("No audio content in response");
@@ -359,8 +392,13 @@ export default function ITTSVoiceGenerator() {
   };
 
   const handleCloneVoice = async () => {
-    if (!cloneVoiceName || !cloneAudioFile || !cloneTranscription) {
-      showError("Please provide voice name, audio file, and transcription");
+    if (!cloneVoiceName || !cloneAudioFile) {
+      showError("Please provide voice name and audio file");
+      return;
+    }
+    
+    if (provider === 'inworld' && !cloneTranscription) {
+      showError("Please provide transcription for Inworld voice cloning");
       return;
     }
     
@@ -369,36 +407,38 @@ export default function ITTSVoiceGenerator() {
     try {
       const base64Audio = await fileToBase64(cloneAudioFile);
       
-      // Parse tags from comma-separated string
-      const tagsArray = cloneTags.split(',').map(t => t.trim()).filter(t => t.length > 0);
-      
-      const requestBody = {
-        displayName: cloneVoiceName,
-        langCode: 'EN_US',
-        voiceSamples: [{
-          audioData: base64Audio,
-          transcription: cloneTranscription
-        }],
-        description: cloneDescription || undefined,
-        tags: tagsArray.length > 0 ? tagsArray : undefined,
-        audioProcessingConfig: {
-          removeBackgroundNoise: removeBackgroundNoise
-        }
-      };
-      
-      const response = await fetch('/api/inworld/voices', {
-        method: 'POST',
-        headers: {
-          'x-api-key': apiKey,
-          'x-workspace-id': workspaceId,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
+      if (provider === 'inworld') {
+        // Parse tags from comma-separated string
+        const tagsArray = cloneTags.split(',').map(t => t.trim()).filter(t => t.length > 0);
+        
+        const requestBody = {
+          displayName: cloneVoiceName,
+          langCode: 'EN_US',
+          voiceSamples: [{
+            audioData: base64Audio,
+            transcription: cloneTranscription
+          }],
+          description: cloneDescription || undefined,
+          tags: tagsArray.length > 0 ? tagsArray : undefined,
+          audioProcessingConfig: {
+            removeBackgroundNoise: removeBackgroundNoise
+          }
+        };
+        
+        const response = await fetch('/api/inworld/voices', {
+          method: 'POST',
+          headers: {
+            'x-api-key': apiKey,
+            'x-workspace-id': workspaceId,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.details || errorData.error || `Failed to clone voice: ${response.status}`);
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.details || errorData.error || `Failed to clone voice: ${response.status}`);
+        }
       }
 
       showSuccess(`Voice "${cloneVoiceName}" cloned successfully!`);
@@ -638,7 +678,7 @@ export default function ITTSVoiceGenerator() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Transcription <span className="text-red-500">*</span></label>
+                <label className="text-sm font-medium">Transcription {provider === 'inworld' && <span className="text-red-500">*</span>}</label>
                 <textarea
                   value={cloneTranscription}
                   onChange={(e) => setCloneTranscription(e.target.value)}
@@ -646,7 +686,9 @@ export default function ITTSVoiceGenerator() {
                   placeholder="Enter the exact text spoken in the audio sample..."
                   rows={4}
                 />
-                <p className="text-xs text-muted-foreground">Accurate transcription improves voice quality. Include punctuation and capitalization.</p>
+                <p className="text-xs text-muted-foreground">
+                  Accurate transcription improves voice quality. Include punctuation and capitalization.
+                </p>
               </div>
 
               <div className="flex items-center gap-2 p-3 bg-accent/50 rounded-lg">
@@ -673,10 +715,10 @@ export default function ITTSVoiceGenerator() {
               </button>
               <button
                 onClick={handleCloneVoice}
-                disabled={cloning || !cloneVoiceName || !cloneAudioFile || !cloneTranscription}
+                disabled={cloning || !cloneVoiceName || !cloneAudioFile || (provider === 'inworld' && !cloneTranscription)}
                 className={cn(
                   "flex-1 p-2 rounded-md font-medium flex items-center justify-center gap-2 transition-colors",
-                  cloning || !cloneVoiceName || !cloneAudioFile || !cloneTranscription
+                  cloning || !cloneVoiceName || !cloneAudioFile || (provider === 'inworld' && !cloneTranscription)
                     ? "bg-muted text-muted-foreground cursor-not-allowed"
                     : "bg-primary text-primary-foreground hover:bg-primary/90"
                 )}
@@ -811,6 +853,7 @@ export default function ITTSVoiceGenerator() {
                     placeholder="Enter your Basic (Base64) API Key"
                   />
                 </div>
+                
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Workspace ID</label>
                   <input
@@ -822,6 +865,7 @@ export default function ITTSVoiceGenerator() {
                   />
                   <p className="text-xs text-muted-foreground">Find this in your Inworld dashboard URL</p>
                 </div>
+                
                 <button
                   onClick={saveConfig}
                   disabled={fetchingVoices}
@@ -869,7 +913,7 @@ export default function ITTSVoiceGenerator() {
 
             <button
               onClick={() => setIsCloneModalOpen(true)}
-              disabled={!apiKey || !workspaceId}
+              disabled={!apiKey || (provider === 'inworld' && !workspaceId)}
               className="w-full flex items-center justify-center gap-2 border p-2 rounded-md hover:bg-accent transition-colors text-sm disabled:opacity-50"
             >
               <Copy size={16} /> Clone New Voice
@@ -932,13 +976,13 @@ export default function ITTSVoiceGenerator() {
                   <label className="font-medium flex items-center gap-1">
                     <Gauge size={14} /> Default Speed
                   </label>
-                  <span className="text-muted-foreground">{globalSpeed}x</span>
+                  <span className="text-muted-foreground">{globalSpeed.toFixed(2)}x</span>
                 </div>
                 <input
                   type="range"
                   min="0.5"
                   max="2"
-                  step="0.25"
+                  step="0.05"
                   value={globalSpeed}
                   onChange={(e) => setGlobalSpeed(parseFloat(e.target.value))}
                   className="w-full accent-primary"
@@ -955,7 +999,7 @@ export default function ITTSVoiceGenerator() {
             <h2 className="font-semibold text-lg flex items-center gap-2">
               <Volume2 size={20} /> Text to Speech
               <span className="ml-auto text-sm font-normal text-muted-foreground">
-               Yoohoooo!!
+                Inworld TTS
               </span>
             </h2>
             
@@ -1147,12 +1191,12 @@ export default function ITTSVoiceGenerator() {
                               type="range"
                               min="0.5"
                               max="2"
-                              step="0.25"
+                              step="0.05"
                               value={audio.playbackRate}
                               onChange={(e) => updateAudioSpeed(audio.id, parseFloat(e.target.value))}
                               className="w-full accent-primary h-1"
                             />
-                            <span className="text-xs text-muted-foreground w-8">{audio.playbackRate}x</span>
+                            <span className="text-xs text-muted-foreground w-8">{audio.playbackRate.toFixed(2)}x</span>
                           </div>
                         </div>
                       </div>
