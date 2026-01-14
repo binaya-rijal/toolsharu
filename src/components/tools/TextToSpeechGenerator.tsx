@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { 
   Loader2, Play, Pause, Trash2, Copy, Volume2, Settings, Save, Mic, 
   Upload, X, Download, AlertCircle, RefreshCw, ChevronDown, ChevronUp,
-  Gauge, RotateCcw
+  Gauge, RotateCcw, Merge
 } from "lucide-react";
 
 interface Voice {
@@ -80,6 +80,10 @@ export default function TextToSpeechGenerator() {
   // Global audio controls
   const [globalVolume, setGlobalVolume] = useState(1);
   const [globalSpeed, setGlobalSpeed] = useState(1);
+
+  // Join audio state
+  const [isJoining, setIsJoining] = useState(false);
+  const [joinedAudioUrl, setJoinedAudioUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const savedProvider = localStorage.getItem("tts_provider") as Provider;
@@ -379,6 +383,147 @@ export default function TextToSpeechGenerator() {
     const a = document.createElement('a');
     a.href = audioItem.audioUrl;
     a.download = `tts-audio-${audioItem.id}.mp3`;
+    a.click();
+  };
+
+  const joinAndDownloadAudio = async () => {
+    // Get only audios that have been generated (have audioUrl) and are not currently generating
+    const completedAudios = generatedAudios.filter(a => a.audioUrl && !a.isGenerating);
+    
+    if (completedAudios.length < 2) {
+      showError("Need at least 2 completed audio files to join");
+      return;
+    }
+
+    setIsJoining(true);
+    
+    // Clear previous joined audio URL
+    if (joinedAudioUrl) {
+      URL.revokeObjectURL(joinedAudioUrl);
+      setJoinedAudioUrl(null);
+    }
+
+    try {
+      // Reverse to get chronological order (oldest first, as they're stored newest-first)
+      const audiosInOrder = [...completedAudios].reverse();
+      
+      // Create AudioContext
+      const audioContext = new AudioContext();
+      
+      // Fetch and decode all audio files
+      const audioBuffers: AudioBuffer[] = [];
+      
+      for (const audio of audiosInOrder) {
+        if (!audio.audioUrl) continue;
+        
+        const response = await fetch(audio.audioUrl);
+        const arrayBuffer = await response.arrayBuffer();
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        audioBuffers.push(audioBuffer);
+      }
+      
+      if (audioBuffers.length === 0) {
+        throw new Error("No audio buffers to join");
+      }
+
+      // Calculate total length
+      const totalLength = audioBuffers.reduce((sum, buffer) => sum + buffer.length, 0);
+      const numberOfChannels = audioBuffers[0].numberOfChannels;
+      const sampleRate = audioBuffers[0].sampleRate;
+
+      // Create output buffer
+      const outputBuffer = audioContext.createBuffer(numberOfChannels, totalLength, sampleRate);
+
+      // Copy all audio data into output buffer
+      let offset = 0;
+      for (const buffer of audioBuffers) {
+        for (let channel = 0; channel < numberOfChannels; channel++) {
+          const outputData = outputBuffer.getChannelData(channel);
+          const inputData = buffer.getChannelData(channel);
+          outputData.set(inputData, offset);
+        }
+        offset += buffer.length;
+      }
+
+      // Convert AudioBuffer to WAV Blob
+      const wavBlob = audioBufferToWav(outputBuffer);
+      const joinedUrl = URL.createObjectURL(wavBlob);
+      
+      setJoinedAudioUrl(joinedUrl);
+      showSuccess(`Successfully joined ${audioBuffers.length} audio files!`);
+      
+      // Close the audio context
+      await audioContext.close();
+      
+    } catch (err) {
+      console.error("Failed to join audio:", err);
+      showError(err instanceof Error ? err.message : "Failed to join audio files");
+    } finally {
+      setIsJoining(false);
+    }
+  };
+
+  // Helper function to convert AudioBuffer to WAV format
+  const audioBufferToWav = (buffer: AudioBuffer): Blob => {
+    const numberOfChannels = buffer.numberOfChannels;
+    const sampleRate = buffer.sampleRate;
+    const format = 1; // PCM
+    const bitDepth = 16;
+    
+    const bytesPerSample = bitDepth / 8;
+    const blockAlign = numberOfChannels * bytesPerSample;
+    
+    const dataLength = buffer.length * blockAlign;
+    const bufferLength = 44 + dataLength;
+    
+    const arrayBuffer = new ArrayBuffer(bufferLength);
+    const view = new DataView(arrayBuffer);
+    
+    // Write WAV header
+    const writeString = (offset: number, string: string) => {
+      for (let i = 0; i < string.length; i++) {
+        view.setUint8(offset + i, string.charCodeAt(i));
+      }
+    };
+    
+    writeString(0, 'RIFF');
+    view.setUint32(4, bufferLength - 8, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true); // fmt chunk size
+    view.setUint16(20, format, true);
+    view.setUint16(22, numberOfChannels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * blockAlign, true); // byte rate
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bitDepth, true);
+    writeString(36, 'data');
+    view.setUint32(40, dataLength, true);
+    
+    // Write audio data
+    const channelData: Float32Array[] = [];
+    for (let i = 0; i < numberOfChannels; i++) {
+      channelData.push(buffer.getChannelData(i));
+    }
+    
+    let offset = 44;
+    for (let i = 0; i < buffer.length; i++) {
+      for (let channel = 0; channel < numberOfChannels; channel++) {
+        const sample = Math.max(-1, Math.min(1, channelData[channel][i]));
+        const intSample = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+        view.setInt16(offset, intSample, true);
+        offset += 2;
+      }
+    }
+    
+    return new Blob([arrayBuffer], { type: 'audio/wav' });
+  };
+
+  const downloadJoinedAudio = () => {
+    if (!joinedAudioUrl) return;
+    const a = document.createElement('a');
+    a.href = joinedAudioUrl;
+    a.download = `tts-joined-audio-${Date.now()}.wav`;
     a.click();
   };
 
@@ -1066,6 +1211,8 @@ export default function TextToSpeechGenerator() {
                     generatedAudios.forEach(a => {
                       if (a.audioUrl) URL.revokeObjectURL(a.audioUrl);
                     });
+                    if (joinedAudioUrl) URL.revokeObjectURL(joinedAudioUrl);
+                    setJoinedAudioUrl(null);
                     setGeneratedAudios([]);
                     audioRefs.current = {};
                   }}
@@ -1074,6 +1221,60 @@ export default function TextToSpeechGenerator() {
                   Clear All
                 </button>
               </div>
+
+              {/* Join Audio Section */}
+              {generatedAudios.filter(a => a.audioUrl && !a.isGenerating).length >= 2 && (
+                <div className="bg-accent/50 border rounded-lg p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Merge size={18} className="text-primary" />
+                      <span className="font-medium text-sm">Join All Audio Files</span>
+                      <span className="text-xs text-muted-foreground">
+                        ({generatedAudios.filter(a => a.audioUrl && !a.isGenerating).length} files)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={joinAndDownloadAudio}
+                        disabled={isJoining}
+                        className={cn(
+                          "px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 transition-colors",
+                          isJoining
+                            ? "bg-muted text-muted-foreground cursor-not-allowed"
+                            : "bg-primary text-primary-foreground hover:bg-primary/90"
+                        )}
+                      >
+                        {isJoining ? (
+                          <>
+                            <Loader2 className="animate-spin" size={16} />
+                            Joining...
+                          </>
+                        ) : (
+                          <>
+                            <Merge size={16} />
+                            Join Audio
+                          </>
+                        )}
+                      </button>
+                      {joinedAudioUrl && (
+                        <button
+                          onClick={downloadJoinedAudio}
+                          className="px-4 py-2 rounded-md text-sm font-medium flex items-center gap-2 bg-green-600 text-white hover:bg-green-700 transition-colors"
+                        >
+                          <Download size={16} />
+                          Download Joined
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {joinedAudioUrl && (
+                    <div className="flex items-center gap-3 pt-2 border-t border-border/50">
+                      <span className="text-xs text-muted-foreground">Preview joined audio:</span>
+                      <audio controls src={joinedAudioUrl} className="flex-1 h-8" />
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
                 {generatedAudios.map((audio, index) => (
