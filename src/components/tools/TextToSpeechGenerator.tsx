@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { 
   Loader2, Play, Pause, Trash2, Copy, Volume2, Settings, Save, Mic, 
   Upload, X, Download, AlertCircle, RefreshCw, ChevronDown, ChevronUp,
-  Gauge, RotateCcw, Merge
+  Gauge, RotateCcw, Merge, MicOff
 } from "lucide-react";
 
 interface Voice {
@@ -84,6 +84,13 @@ export default function TextToSpeechGenerator() {
   // Join audio state
   const [isJoining, setIsJoining] = useState(false);
   const [joinedAudioUrl, setJoinedAudioUrl] = useState<string | null>(null);
+
+  // Voice recording and transcription state
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     const savedProvider = localStorage.getItem("tts_provider") as Provider;
@@ -681,6 +688,109 @@ export default function TextToSpeechGenerator() {
     return voice.displayName || voice.name.split('/').pop() || voice.name;
   };
 
+  // Voice recording and transcription functions
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      audioChunksRef.current = [];
+      
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
+      });
+      
+      mediaRecorderRef.current = mediaRecorder;
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+      
+      mediaRecorder.onstop = async () => {
+        // Stop all tracks
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
+          streamRef.current = null;
+        }
+        
+        // Create audio blob and transcribe
+        const audioBlob = new Blob(audioChunksRef.current, { 
+          type: mediaRecorderRef.current?.mimeType || 'audio/webm' 
+        });
+        
+        await transcribeAudio(audioBlob);
+      };
+      
+      mediaRecorder.start(1000); // Collect data every second
+      setIsRecording(true);
+      showSuccess("Recording started... Click again to stop.");
+    } catch (err) {
+      console.error("Failed to start recording:", err);
+      showError("Failed to access microphone. Please check permissions.");
+    }
+  }, []);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+    }
+  }, []);
+
+  const toggleRecording = useCallback(() => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  }, [isRecording, startRecording, stopRecording]);
+
+  const transcribeAudio = async (audioBlob: Blob) => {
+    setIsTranscribing(true);
+    try {
+      const formData = new FormData();
+      formData.append('audio', audioBlob, 'recording.webm');
+      
+      const response = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Transcription failed');
+      }
+      
+      const data = await response.json();
+      
+      if (data.transcription) {
+        // Append transcription to existing text
+        setText(prev => {
+          const separator = prev.trim() ? ' ' : '';
+          return prev + separator + data.transcription;
+        });
+        showSuccess("Transcription added successfully!");
+      } else {
+        showError("No speech detected in the recording.");
+      }
+    } catch (err) {
+      console.error("Transcription error:", err);
+      showError(err instanceof Error ? err.message : "Failed to transcribe audio");
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
   const charCount = text.length;
   const charPercentage = (charCount / MAX_CHAR_LIMIT) * 100;
 
@@ -1153,9 +1263,44 @@ export default function TextToSpeechGenerator() {
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 maxLength={MAX_CHAR_LIMIT}
-                className="min-h-[200px] w-full p-4 rounded-md border bg-background focus:outline-none focus:ring-2 focus:ring-primary resize-none"
-                placeholder="Enter text to generate speech (max 6000 characters)..."
+                className="min-h-[200px] w-full p-4 pr-14 rounded-md border bg-background focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                placeholder="Enter text to generate speech (max 6000 characters)... or click the mic icon to record"
               />
+              {/* Voice Recording Button */}
+              <button
+                onClick={toggleRecording}
+                disabled={isTranscribing}
+                className={cn(
+                  "absolute top-3 right-3 p-2 rounded-full transition-all duration-200",
+                  isRecording 
+                    ? "bg-red-500 text-white animate-pulse shadow-lg shadow-red-500/50" 
+                    : isTranscribing 
+                      ? "bg-muted text-muted-foreground cursor-not-allowed"
+                      : "bg-primary/10 text-primary hover:bg-primary/20 hover:scale-110"
+                )}
+                title={isRecording ? "Stop recording" : isTranscribing ? "Transcribing..." : "Start voice recording"}
+              >
+                {isTranscribing ? (
+                  <Loader2 size={20} className="animate-spin" />
+                ) : isRecording ? (
+                  <MicOff size={20} />
+                ) : (
+                  <Mic size={20} />
+                )}
+              </button>
+              {/* Recording indicator */}
+              {isRecording && (
+                <div className="absolute top-3 right-14 flex items-center gap-2 text-red-500 text-xs font-medium animate-pulse">
+                  <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                  Recording...
+                </div>
+              )}
+              {isTranscribing && (
+                <div className="absolute top-3 right-14 flex items-center gap-2 text-primary text-xs font-medium">
+                  <Loader2 size={12} className="animate-spin" />
+                  Transcribing...
+                </div>
+              )}
               <div className="absolute bottom-3 right-3 text-xs text-muted-foreground">
                 <span className={cn(charCount > MAX_CHAR_LIMIT * 0.9 && "text-yellow-500", charCount >= MAX_CHAR_LIMIT && "text-destructive")}>
                   {charCount.toLocaleString()}
