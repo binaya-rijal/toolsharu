@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
-import { 
-  Loader2, Play, Pause, Trash2, Copy, Volume2, Settings, Save, Mic, 
+import {
+  Loader2, Play, Pause, Trash2, Copy, Volume2, Settings, Save, Mic,
   Upload, X, Download, AlertCircle, RefreshCw, ChevronDown, ChevronUp,
   Gauge, RotateCcw, Merge, MicOff
 } from "lucide-react";
@@ -55,13 +55,17 @@ export default function TextToSpeechGenerator() {
   const [isConfigOpen, setIsConfigOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  
+
   // Generated audios list
   const [generatedAudios, setGeneratedAudios] = useState<GeneratedAudio[]>([]);
   const [generatingCount, setGeneratingCount] = useState(0);
   const audioRefs = useRef<{ [key: number]: HTMLAudioElement }>({});
+  // Web Audio API refs
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const sourceNodesRef = useRef<{ [key: number]: MediaElementAudioSourceNode }>({});
+  const gainNodesRef = useRef<{ [key: number]: GainNode }>({});
   const audioIdCounter = useRef(1);
-  
+
   // Voice cloning state
   const [isCloneModalOpen, setIsCloneModalOpen] = useState(false);
   const [cloneVoiceName, setCloneVoiceName] = useState("");
@@ -84,7 +88,7 @@ export default function TextToSpeechGenerator() {
     title: string;
     message: string;
     onConfirm: () => void;
-  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => { } });
 
   // Global audio controls
   const [globalVolume, setGlobalVolume] = useState(1);
@@ -104,7 +108,7 @@ export default function TextToSpeechGenerator() {
   useEffect(() => {
     const savedProvider = localStorage.getItem("tts_provider") as Provider;
     if (savedProvider) setProvider(savedProvider);
-    
+
     const savedKey = localStorage.getItem(`${savedProvider || 'inworld'}_api_key`);
     const savedWorkspace = localStorage.getItem("inworld_workspace_id");
     if (savedKey) setApiKey(savedKey);
@@ -159,14 +163,14 @@ export default function TextToSpeechGenerator() {
     }
     setFetchingVoices(true);
     setError(null);
-    
+
     try {
       const endpoint = '/api/inworld/voices';
       const headers: HeadersInit = {
         'x-api-key': apiKey,
         'x-workspace-id': workspaceId,
       };
-      
+
       const response = await fetch(endpoint, {
         method: 'GET',
         headers,
@@ -179,9 +183,9 @@ export default function TextToSpeechGenerator() {
 
       const data = await response.json();
       const voiceList = data.voices || [];
-      
+
       setVoices(voiceList);
-      
+
       if (voiceList.length === 0) {
         showError("No voices found. Try cloning a voice first.");
       } else {
@@ -210,7 +214,7 @@ export default function TextToSpeechGenerator() {
       console.log('Synthesizing text:', textToSynthesize);
       console.log('Using voice:', voiceName);
       console.log('Provider:', provider);
-      
+
       if (provider === 'inworld') {
         const response = await fetch('/api/inworld/synthesize', {
           method: 'POST',
@@ -234,13 +238,13 @@ export default function TextToSpeechGenerator() {
 
         const data = await response.json();
         console.log('Synthesis response received');
-        
+
         if (data.audioContent) {
           const audioBlob = base64ToBlob(data.audioContent, 'audio/mp3');
           return URL.createObjectURL(audioBlob);
         }
       }
-      
+
       throw new Error("No audio content in response");
     } catch (err) {
       console.error("Synthesis failed:", err);
@@ -284,15 +288,15 @@ export default function TextToSpeechGenerator() {
       playbackRate: globalSpeed,
       isGenerating: true,
     };
-    
+
     setGeneratedAudios(prev => [placeholderAudio, ...prev]);
 
     try {
       const audioUrl = await synthesizeText(textToGenerate, selectedVoice);
-      
+
       if (audioUrl) {
-        setGeneratedAudios(prev => prev.map(a => 
-          a.id === audioId 
+        setGeneratedAudios(prev => prev.map(a =>
+          a.id === audioId
             ? { ...a, audioUrl, isGenerating: false }
             : a
         ));
@@ -314,23 +318,23 @@ export default function TextToSpeechGenerator() {
     }
 
     setGeneratingCount(prev => prev + 1);
-    
+
     // Mark as regenerating
-    setGeneratedAudios(prev => prev.map(a => 
+    setGeneratedAudios(prev => prev.map(a =>
       a.id === audioItem.id ? { ...a, isPlaying: false, isGenerating: true, audioUrl: null } : a
     ));
 
     try {
       const audioUrl = await synthesizeText(audioItem.text, audioItem.voiceName);
-      
+
       if (audioUrl) {
         // Revoke old URL if exists
         if (audioItem.audioUrl) {
           URL.revokeObjectURL(audioItem.audioUrl);
         }
-        
-        setGeneratedAudios(prev => prev.map(a => 
-          a.id === audioItem.id 
+
+        setGeneratedAudios(prev => prev.map(a =>
+          a.id === audioItem.id
             ? { ...a, audioUrl: audioUrl, timestamp: new Date(), isGenerating: false }
             : a
         ));
@@ -339,7 +343,7 @@ export default function TextToSpeechGenerator() {
     } catch (err) {
       showError(`Failed to regenerate audio #${audioItem.id}`);
       // Reset generating state on error
-      setGeneratedAudios(prev => prev.map(a => 
+      setGeneratedAudios(prev => prev.map(a =>
         a.id === audioItem.id ? { ...a, isGenerating: false } : a
       ));
     } finally {
@@ -347,39 +351,70 @@ export default function TextToSpeechGenerator() {
     }
   };
 
-  const togglePlayPause = (audioId: number) => {
+  const togglePlayPause = async (audioId: number) => {
     const audio = audioRefs.current[audioId];
     if (!audio) return;
+
+    // Initialize AudioContext if needed
+    if (!audioContextRef.current) {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      audioContextRef.current = new AudioContextClass();
+    }
+
+    if (audioContextRef.current.state === 'suspended') {
+      await audioContextRef.current.resume();
+    }
+
+    // Setup Audio Nodes if not exists
+    if (!sourceNodesRef.current[audioId]) {
+      const ctx = audioContextRef.current;
+      const source = ctx.createMediaElementSource(audio);
+      const gainNode = ctx.createGain();
+
+      // Apply current volume
+      const currentAudioState = generatedAudios.find(a => a.id === audioId);
+      gainNode.gain.value = currentAudioState?.volume ?? 1;
+
+      source.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      sourceNodesRef.current[audioId] = source;
+      gainNodesRef.current[audioId] = gainNode;
+    }
 
     if (audio.paused) {
       // Pause all other audios
       Object.entries(audioRefs.current).forEach(([id, audioEl]) => {
         if (parseInt(id) !== audioId && !audioEl.paused) {
           audioEl.pause();
-          setGeneratedAudios(prev => prev.map(a => 
+          setGeneratedAudios(prev => prev.map(a =>
             a.id === parseInt(id) ? { ...a, isPlaying: false } : a
           ));
         }
       });
-      
+
       audio.play();
-      setGeneratedAudios(prev => prev.map(a => 
+      setGeneratedAudios(prev => prev.map(a =>
         a.id === audioId ? { ...a, isPlaying: true } : a
       ));
     } else {
       audio.pause();
-      setGeneratedAudios(prev => prev.map(a => 
+      setGeneratedAudios(prev => prev.map(a =>
         a.id === audioId ? { ...a, isPlaying: false } : a
       ));
     }
   };
 
   const updateAudioVolume = (audioId: number, volume: number) => {
-    const audio = audioRefs.current[audioId];
-    if (audio) {
-      audio.volume = volume;
+    // Update Gain Node directly
+    if (gainNodesRef.current[audioId]) {
+      gainNodesRef.current[audioId].gain.value = volume;
     }
-    setGeneratedAudios(prev => prev.map(a => 
+
+    // We don't set audio.volume anymore as we want >100% gain control
+    // taking over the raw element volume
+
+    setGeneratedAudios(prev => prev.map(a =>
       a.id === audioId ? { ...a, volume } : a
     ));
   };
@@ -389,7 +424,7 @@ export default function TextToSpeechGenerator() {
     if (audio) {
       audio.playbackRate = speed;
     }
-    setGeneratedAudios(prev => prev.map(a => 
+    setGeneratedAudios(prev => prev.map(a =>
       a.id === audioId ? { ...a, playbackRate: speed } : a
     ));
   };
@@ -405,14 +440,14 @@ export default function TextToSpeechGenerator() {
   const joinAndDownloadAudio = async () => {
     // Get only audios that have been generated (have audioUrl) and are not currently generating
     const completedAudios = generatedAudios.filter(a => a.audioUrl && !a.isGenerating);
-    
+
     if (completedAudios.length < 2) {
       showError("Need at least 2 completed audio files to join");
       return;
     }
 
     setIsJoining(true);
-    
+
     // Clear previous joined audio URL
     if (joinedAudioUrl) {
       URL.revokeObjectURL(joinedAudioUrl);
@@ -422,22 +457,22 @@ export default function TextToSpeechGenerator() {
     try {
       // Reverse to get chronological order (oldest first, as they're stored newest-first)
       const audiosInOrder = [...completedAudios].reverse();
-      
+
       // Create AudioContext
       const audioContext = new AudioContext();
-      
+
       // Fetch and decode all audio files
       const audioBuffers: AudioBuffer[] = [];
-      
+
       for (const audio of audiosInOrder) {
         if (!audio.audioUrl) continue;
-        
+
         const response = await fetch(audio.audioUrl);
         const arrayBuffer = await response.arrayBuffer();
         const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
         audioBuffers.push(audioBuffer);
       }
-      
+
       if (audioBuffers.length === 0) {
         throw new Error("No audio buffers to join");
       }
@@ -464,13 +499,13 @@ export default function TextToSpeechGenerator() {
       // Convert AudioBuffer to WAV Blob
       const wavBlob = audioBufferToWav(outputBuffer);
       const joinedUrl = URL.createObjectURL(wavBlob);
-      
+
       setJoinedAudioUrl(joinedUrl);
       showSuccess(`Successfully joined ${audioBuffers.length} audio files!`);
-      
+
       // Close the audio context
       await audioContext.close();
-      
+
     } catch (err) {
       console.error("Failed to join audio:", err);
       showError(err instanceof Error ? err.message : "Failed to join audio files");
@@ -485,23 +520,23 @@ export default function TextToSpeechGenerator() {
     const sampleRate = buffer.sampleRate;
     const format = 1; // PCM
     const bitDepth = 16;
-    
+
     const bytesPerSample = bitDepth / 8;
     const blockAlign = numberOfChannels * bytesPerSample;
-    
+
     const dataLength = buffer.length * blockAlign;
     const bufferLength = 44 + dataLength;
-    
+
     const arrayBuffer = new ArrayBuffer(bufferLength);
     const view = new DataView(arrayBuffer);
-    
+
     // Write WAV header
     const writeString = (offset: number, string: string) => {
       for (let i = 0; i < string.length; i++) {
         view.setUint8(offset + i, string.charCodeAt(i));
       }
     };
-    
+
     writeString(0, 'RIFF');
     view.setUint32(4, bufferLength - 8, true);
     writeString(8, 'WAVE');
@@ -515,13 +550,13 @@ export default function TextToSpeechGenerator() {
     view.setUint16(34, bitDepth, true);
     writeString(36, 'data');
     view.setUint32(40, dataLength, true);
-    
+
     // Write audio data
     const channelData: Float32Array[] = [];
     for (let i = 0; i < numberOfChannels; i++) {
       channelData.push(buffer.getChannelData(i));
     }
-    
+
     let offset = 44;
     for (let i = 0; i < buffer.length; i++) {
       for (let channel = 0; channel < numberOfChannels; channel++) {
@@ -531,7 +566,7 @@ export default function TextToSpeechGenerator() {
         offset += 2;
       }
     }
-    
+
     return new Blob([arrayBuffer], { type: 'audio/wav' });
   };
 
@@ -548,6 +583,17 @@ export default function TextToSpeechGenerator() {
     if (audio && audio.audioUrl) {
       URL.revokeObjectURL(audio.audioUrl);
     }
+
+    // Cleanup Web Audio Nodes
+    if (sourceNodesRef.current[audioId]) {
+      sourceNodesRef.current[audioId].disconnect();
+      delete sourceNodesRef.current[audioId];
+    }
+    if (gainNodesRef.current[audioId]) {
+      gainNodesRef.current[audioId].disconnect();
+      delete gainNodesRef.current[audioId];
+    }
+
     setGeneratedAudios(prev => prev.filter(a => a.id !== audioId));
     delete audioRefs.current[audioId];
   };
@@ -557,21 +603,21 @@ export default function TextToSpeechGenerator() {
       showError("Please provide voice name and audio file");
       return;
     }
-    
+
     if (provider === 'inworld' && !cloneTranscription) {
       showError("Please provide transcription for Inworld voice cloning");
       return;
     }
-    
+
     setCloning(true);
 
     try {
       const base64Audio = await fileToBase64(cloneAudioFile);
-      
+
       if (provider === 'inworld') {
         // Parse tags from comma-separated string
         const tagsArray = cloneTags.split(',').map(t => t.trim()).filter(t => t.length > 0);
-        
+
         const requestBody = {
           displayName: cloneVoiceName,
           langCode: 'EN_US',
@@ -585,7 +631,7 @@ export default function TextToSpeechGenerator() {
             removeBackgroundNoise: removeBackgroundNoise
           }
         };
-        
+
         const response = await fetch('/api/inworld/voices', {
           method: 'POST',
           headers: {
@@ -703,34 +749,34 @@ export default function TextToSpeechGenerator() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       audioChunksRef.current = [];
-      
+
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
       });
-      
+
       mediaRecorderRef.current = mediaRecorder;
-      
+
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
         }
       };
-      
+
       mediaRecorder.onstop = async () => {
         // Stop all tracks
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(track => track.stop());
           streamRef.current = null;
         }
-        
+
         // Create audio blob and transcribe
-        const audioBlob = new Blob(audioChunksRef.current, { 
-          type: mediaRecorderRef.current?.mimeType || 'audio/webm' 
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: mediaRecorderRef.current?.mimeType || 'audio/webm'
         });
-        
+
         await transcribeAudio(audioBlob);
       };
-      
+
       mediaRecorder.start(1000); // Collect data every second
       setIsRecording(true);
       showSuccess("Recording started... Click again to stop.");
@@ -760,19 +806,19 @@ export default function TextToSpeechGenerator() {
     try {
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording.webm');
-      
+
       const response = await fetch('/api/transcribe', {
         method: 'POST',
         body: formData,
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Transcription failed');
       }
-      
+
       const data = await response.json();
-      
+
       if (data.transcription) {
         // Append transcription to existing text
         setText(prev => {
@@ -815,7 +861,7 @@ export default function TextToSpeechGenerator() {
           </button>
         </div>
       )}
-      
+
       {successMessage && (
         <div className="fixed top-4 right-4 bg-green-600 text-white p-4 rounded-lg shadow-lg z-50 flex items-center gap-2 max-w-md animate-in slide-in-from-top-2">
           <span className="text-sm">{successMessage}</span>
@@ -833,7 +879,7 @@ export default function TextToSpeechGenerator() {
               </h3>
               <p className="text-sm text-muted-foreground">{confirmDialog.message}</p>
             </div>
-            
+
             <div className="flex gap-2 pt-2">
               <button
                 onClick={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
@@ -867,7 +913,7 @@ export default function TextToSpeechGenerator() {
                 <X size={20} />
               </button>
             </div>
-            
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Voice Name <span className="text-red-500">*</span></label>
@@ -902,11 +948,11 @@ export default function TextToSpeechGenerator() {
                 />
                 <p className="text-xs text-muted-foreground">Separate multiple tags with commas</p>
               </div>
-              
+
               <div className="space-y-2">
                 <label className="text-sm font-medium">Audio Sample <span className="text-red-500">*</span></label>
                 <p className="text-xs text-muted-foreground">Upload a clear audio sample (MP3 or WAV, 10-30 seconds recommended for best results)</p>
-                
+
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -914,8 +960,8 @@ export default function TextToSpeechGenerator() {
                   onChange={(e) => setCloneAudioFile(e.target.files?.[0] || null)}
                   className="hidden"
                 />
-                
-                <div 
+
+                <div
                   onClick={() => fileInputRef.current?.click()}
                   className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary hover:bg-accent/50 transition-colors"
                 >
@@ -924,7 +970,7 @@ export default function TextToSpeechGenerator() {
                       <Volume2 size={20} className="text-primary" />
                       <span className="text-sm font-medium">{cloneAudioFile.name}</span>
                       <span className="text-xs text-muted-foreground">({(cloneAudioFile.size / 1024 / 1024).toFixed(2)} MB)</span>
-                      <button 
+                      <button
                         onClick={(e) => { e.stopPropagation(); setCloneAudioFile(null); }}
                         className="text-muted-foreground hover:text-destructive ml-2"
                       >
@@ -969,7 +1015,7 @@ export default function TextToSpeechGenerator() {
                 </label>
               </div>
             </div>
-            
+
             <div className="flex gap-2 pt-4 border-t">
               <button
                 onClick={() => { setIsCloneModalOpen(false); resetCloneForm(); }}
@@ -1007,7 +1053,7 @@ export default function TextToSpeechGenerator() {
                 <X size={20} />
               </button>
             </div>
-            
+
             {loadingDetails ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="animate-spin" size={32} />
@@ -1076,7 +1122,7 @@ export default function TextToSpeechGenerator() {
             ) : (
               <p className="text-sm text-muted-foreground text-center py-4">No details available</p>
             )}
-            
+
             <div className="flex gap-2 pt-4 border-t">
               <button
                 onClick={() => setIsDetailsModalOpen(false)}
@@ -1097,14 +1143,14 @@ export default function TextToSpeechGenerator() {
               <h2 className="font-semibold text-lg flex items-center gap-2">
                 <Settings size={20} /> Configuration
               </h2>
-              <button 
+              <button
                 onClick={() => setIsConfigOpen(!isConfigOpen)}
                 className="text-sm text-muted-foreground hover:text-primary"
               >
                 {isConfigOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
               </button>
             </div>
-            
+
             {isConfigOpen && (
               <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
                 <div className="space-y-2">
@@ -1117,7 +1163,7 @@ export default function TextToSpeechGenerator() {
                     placeholder="Enter your Basic (Base64) API Key"
                   />
                 </div>
-                
+
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Workspace ID</label>
                   <input
@@ -1129,7 +1175,7 @@ export default function TextToSpeechGenerator() {
                   />
                   <p className="text-xs text-muted-foreground">Find this in your Inworld dashboard URL</p>
                 </div>
-                
+
                 <button
                   onClick={saveConfig}
                   disabled={fetchingVoices}
@@ -1146,8 +1192,9 @@ export default function TextToSpeechGenerator() {
             <div className="flex items-center justify-between">
               <h2 className="font-semibold text-lg flex items-center gap-2">
                 <Mic size={20} /> Voices
+                <span className="text-[10px] bg-gradient-to-r from-amber-400 to-orange-500 text-white px-1.5 py-0.5 rounded-full font-bold shadow-sm">ULTRA HD</span>
               </h2>
-              <button 
+              <button
                 onClick={fetchVoices}
                 disabled={fetchingVoices || !apiKey}
                 className="text-sm text-muted-foreground hover:text-primary disabled:opacity-50"
@@ -1155,7 +1202,7 @@ export default function TextToSpeechGenerator() {
                 {fetchingVoices ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
               </button>
             </div>
-            
+
             <div className="space-y-2">
               <label className="text-sm font-medium">Select Voice</label>
               <select
@@ -1190,14 +1237,14 @@ export default function TextToSpeechGenerator() {
                     {getVoiceDisplayName(voices.find(v => v.name === selectedVoice) || { name: selectedVoice })}
                   </span>
                   <div className="flex gap-1">
-                    <button 
+                    <button
                       onClick={() => getVoiceDetails(selectedVoice)}
                       className="text-primary hover:bg-primary/10 p-1 rounded"
                       title="View Details"
                     >
                       <Settings size={16} />
                     </button>
-                    <button 
+                    <button
                       onClick={() => deleteVoice(selectedVoice)}
                       className="text-destructive hover:bg-destructive/10 p-1 rounded"
                       title="Delete Voice"
@@ -1215,26 +1262,35 @@ export default function TextToSpeechGenerator() {
             <h2 className="font-semibold text-lg flex items-center gap-2">
               <Gauge size={20} /> Audio Controls
             </h2>
-            
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <label className="font-medium flex items-center gap-1">
                     <Volume2 size={14} /> Default Volume
                   </label>
-                  <span className="text-muted-foreground">{Math.round(globalVolume * 100)}%</span>
+                  <span className={cn(
+                    "text-muted-foreground font-mono",
+                    globalVolume > 1 && "text-amber-500 font-bold"
+                  )}>{Math.round(globalVolume * 100)}%</span>
                 </div>
                 <input
                   type="range"
                   min="0"
-                  max="1"
+                  max="3"
                   step="0.1"
                   value={globalVolume}
                   onChange={(e) => setGlobalVolume(parseFloat(e.target.value))}
                   className="w-full accent-primary"
                 />
+                <div className="flex justify-between text-[10px] text-muted-foreground px-1">
+                  <span>0%</span>
+                  <span>100%</span>
+                  <span>200%</span>
+                  <span>300%</span>
+                </div>
               </div>
-              
+
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <label className="font-medium flex items-center gap-1">
@@ -1278,7 +1334,7 @@ export default function TextToSpeechGenerator() {
                 </select>
               </div>
             </div>
-            
+
             <div className="relative">
               <textarea
                 value={text}
@@ -1293,9 +1349,9 @@ export default function TextToSpeechGenerator() {
                 disabled={isTranscribing}
                 className={cn(
                   "absolute bottom-3 left-3 p-2 rounded-full transition-all duration-200",
-                  isRecording 
-                    ? "bg-red-500 text-white animate-pulse shadow-lg shadow-red-500/50" 
-                    : isTranscribing 
+                  isRecording
+                    ? "bg-red-500 text-white animate-pulse shadow-lg shadow-red-500/50"
+                    : isTranscribing
                       ? "bg-muted text-muted-foreground cursor-not-allowed"
                       : "bg-primary/10 text-primary hover:bg-primary/20 hover:scale-110"
                 )}
@@ -1329,10 +1385,10 @@ export default function TextToSpeechGenerator() {
                 <span> / {MAX_CHAR_LIMIT.toLocaleString()}</span>
               </div>
             </div>
-            
+
             {/* Character limit progress bar */}
             <div className="h-1 bg-muted rounded-full overflow-hidden">
-              <div 
+              <div
                 className={cn(
                   "h-full transition-all",
                   charPercentage > 90 ? "bg-destructive" : charPercentage > 75 ? "bg-yellow-500" : "bg-primary"
@@ -1350,7 +1406,7 @@ export default function TextToSpeechGenerator() {
                   </span>
                 )}
               </div>
-              
+
               <button
                 onClick={generateAudio}
                 disabled={!text || !selectedVoice || generatingCount >= MAX_CONCURRENT}
@@ -1444,7 +1500,7 @@ export default function TextToSpeechGenerator() {
 
               <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
                 {generatedAudios.map((audio, index) => (
-                  <div 
+                  <div
                     key={audio.id}
                     className={cn(
                       "bg-accent/30 border rounded-lg p-4 space-y-3 transition-colors relative",
@@ -1464,7 +1520,7 @@ export default function TextToSpeechGenerator() {
                     {/* Header */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <span className="bg-primary text-primary-foreground w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold">
+                        <span className="bg-gradient-to-br from-primary to-amber-500 text-primary-foreground w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shadow-md">
                           {audio.id}
                         </span>
                         <div>
@@ -1474,7 +1530,7 @@ export default function TextToSpeechGenerator() {
                           </p>
                         </div>
                       </div>
-                      
+
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => regenerateAudio(audio)}
@@ -1516,25 +1572,26 @@ export default function TextToSpeechGenerator() {
                         >
                           {audio.isPlaying ? <Pause size={18} /> : <Play size={18} fill="currentColor" />}
                         </button>
-                        
-                        <audio 
+
+                        <audio
                           ref={(el) => { if (el) audioRefs.current[audio.id] = el; }}
                           src={audio.audioUrl}
                           onEnded={() => {
-                            setGeneratedAudios(prev => prev.map(a => 
+                            setGeneratedAudios(prev => prev.map(a =>
                               a.id === audio.id ? { ...a, isPlaying: false } : a
                             ));
                           }}
                           onLoadedMetadata={() => {
                             const audioEl = audioRefs.current[audio.id];
                             if (audioEl) {
-                              audioEl.volume = audio.volume;
+                              // We set native volume to 1.0 (max) to allow GainNode to handle 0-3.0 range
+                              audioEl.volume = 1.0;
                               audioEl.playbackRate = audio.playbackRate;
                             }
                           }}
                           className="hidden"
                         />
-                        
+
                         <div className="flex-1 grid grid-cols-2 gap-4">
                           {/* Volume Control */}
                           <div className="flex items-center gap-2">
@@ -1542,15 +1599,18 @@ export default function TextToSpeechGenerator() {
                             <input
                               type="range"
                               min="0"
-                              max="1"
+                              max="3"
                               step="0.1"
                               value={audio.volume}
                               onChange={(e) => updateAudioVolume(audio.id, parseFloat(e.target.value))}
                               className="w-full accent-primary h-1"
                             />
-                            <span className="text-xs text-muted-foreground w-8">{Math.round(audio.volume * 100)}%</span>
+                            <span className={cn(
+                              "text-xs text-muted-foreground w-10 text-right font-mono",
+                              audio.volume > 1 && "text-amber-500 font-bold"
+                            )}>{Math.round(audio.volume * 100)}%</span>
                           </div>
-                          
+
                           {/* Speed Control */}
                           <div className="flex items-center gap-2">
                             <Gauge size={14} className="text-muted-foreground flex-shrink-0" />
