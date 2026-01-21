@@ -32,12 +32,21 @@ interface GeneratedAudio {
 const MAX_CHAR_LIMIT = 2000;
 const MAX_CONCURRENT = 10;
 
+// Inworld TTS Models
+const INWORLD_MODELS = [
+  { id: 'inworld-tts-1.5-max', name: 'inworld-tts-1.5-max' },
+  { id: 'inworld-tts-1.5-mini', name: 'inworld-tts-1.5-mini' },
+  { id: 'inworld-tts-1-max', name: 'inworld-tts-1-max' },
+  { id: 'inworld-tts-1', name: 'inworld-tts-1' },
+];
+
 type Provider = 'inworld';
 
 export default function TextToSpeechGenerator() {
   const [provider, setProvider] = useState<Provider>('inworld');
   const [apiKey, setApiKey] = useState("");
   const [workspaceId, setWorkspaceId] = useState("");
+  const [selectedModel, setSelectedModel] = useState('inworld-tts-1.5-max');
   const [text, setText] = useState("");
   const [voices, setVoices] = useState<Voice[]>([]);
   const [selectedVoice, setSelectedVoice] = useState<string>("");
@@ -212,7 +221,7 @@ export default function TextToSpeechGenerator() {
           },
           body: JSON.stringify({
             text: textToSynthesize,
-            modelId: "inworld-tts-1-max",
+            modelId: selectedModel,
             timestampType: "WORD"
           }),
         });
@@ -1251,12 +1260,24 @@ export default function TextToSpeechGenerator() {
         <div className="lg:col-span-2 space-y-6">
           {/* Text Input */}
           <div className="bg-card border rounded-xl p-6 space-y-4">
-            <h2 className="font-semibold text-lg flex items-center gap-2">
-              <Volume2 size={20} /> Text to Speech
-              <span className="ml-auto text-sm font-normal text-muted-foreground">
-                Inworld TTS
-              </span>
-            </h2>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h2 className="font-semibold text-lg flex items-center gap-2">
+                <Volume2 size={20} /> Text to Speech
+              </h2>
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedModel}
+                  onChange={(e) => setSelectedModel(e.target.value)}
+                  className="text-sm p-2 rounded-md border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  {INWORLD_MODELS.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
             
             <div className="relative">
               <textarea
