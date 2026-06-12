@@ -5,6 +5,7 @@ import IdCardForm, { IdCardData } from "@/components/id-card/IdCardForm";
 import IdCardPreview from "@/components/id-card/IdCardPreview";
 import { Download } from "lucide-react";
 import html2canvas from "html2canvas";
+import { ToolOpenTracker } from "@/components/OpenedToolsProvider";
 
 export default function IdCardGeneratorPage() {
     const [data, setData] = useState<IdCardData | null>(null);
@@ -32,6 +33,7 @@ export default function IdCardGeneratorPage() {
 
     return (
         <div className="space-y-8">
+            <ToolOpenTracker id="id-card-generator" />
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">ID Card Generator</h1>

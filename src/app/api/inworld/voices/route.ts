@@ -44,37 +44,62 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Otherwise, get all voices in workspace
-  if (!workspaceId) {
-    return NextResponse.json({ error: 'Missing workspace ID' }, { status: 400 });
-  }
+  // List all voices (system + this workspace's cloned voices) via the global
+  // /voices endpoint, paging through every result. The workspace-scoped endpoint
+  // does not return cloned voices, so we use this one. Auth (Basic key) already
+  // scopes which cloned voices are visible.
+  void workspaceId;
 
   try {
-    const endpoint = `${INWORLD_VOICES_API}/workspaces/${workspaceId}/voices`;
-    console.log('Fetching voices from:', endpoint);
-    
-    const response = await fetch(endpoint, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Basic ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-    });
+    const endpoint = `${INWORLD_VOICES_API}/voices`;
+    const allVoices: Record<string, unknown>[] = [];
+    let pageToken = '';
 
-    const responseText = await response.text();
-    console.log(`Response ${response.status}:`, responseText.substring(0, 500));
-    
-    if (!response.ok) {
-      return NextResponse.json({ 
-        error: `Failed to fetch voices: ${response.status}`,
-        details: responseText 
-      }, { status: response.status });
+    // Guard against runaway pagination.
+    for (let page = 0; page < 50; page++) {
+      const url = new URL(endpoint);
+      url.searchParams.set('pageSize', '100');
+      url.searchParams.set('orderBy', 'display_name asc');
+      if (pageToken) url.searchParams.set('pageToken', pageToken);
+
+      console.log('Fetching voices from:', url.toString());
+
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          'Authorization': `Basic ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const responseText = await response.text();
+
+      if (!response.ok) {
+        console.log(`Response ${response.status}:`, responseText.substring(0, 500));
+        return NextResponse.json({
+          error: `Failed to fetch voices: ${response.status}`,
+          details: responseText,
+        }, { status: response.status });
+      }
+
+      const data = JSON.parse(responseText);
+      const pageVoices = data.voices || data.customVoices || data.items || [];
+      allVoices.push(...pageVoices);
+
+      pageToken = data.nextPageToken || '';
+      if (!pageToken || pageVoices.length === 0) break;
     }
 
-    const data = JSON.parse(responseText);
-    return NextResponse.json({ 
-      voices: data.voices || data.customVoices || data.items || [],
+    // Surface cloned/owned voices first so they're easy to find.
+    allVoices.sort((a, b) => {
+      const ownedA = a.owned ? 0 : 1;
+      const ownedB = b.owned ? 0 : 1;
+      if (ownedA !== ownedB) return ownedA - ownedB;
+      return String(a.displayName || '').localeCompare(String(b.displayName || ''));
     });
+
+    console.log(`Fetched ${allVoices.length} voices`);
+    return NextResponse.json({ voices: allVoices });
   } catch (e) {
     const errorMsg = e instanceof Error ? e.message : String(e);
     console.error('Fetch voices error:', errorMsg);

@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import {
   Loader2, Play, Pause, Trash2, Copy, Volume2, Settings, Save, Mic,
   Upload, X, Download, AlertCircle, RefreshCw, ChevronDown, ChevronUp,
-  Gauge, RotateCcw, Merge, MicOff
+  Gauge, RotateCcw, Merge, MicOff, Sparkles
 } from "lucide-react";
 
 interface Voice {
@@ -14,6 +14,8 @@ interface Voice {
   language?: string;
   gender?: string;
   voiceId?: string;
+  owned?: boolean;
+  source?: string;
 }
 
 interface GeneratedAudio {
@@ -34,10 +36,38 @@ const MAX_CONCURRENT = 10;
 
 // Inworld TTS Models
 const INWORLD_MODELS = [
+  { id: 'inworld-tts-2', name: 'inworld-tts-2 (Steerable)' },
   { id: 'inworld-tts-1.5-max', name: 'inworld-tts-1.5-max' },
   { id: 'inworld-tts-1.5-mini', name: 'inworld-tts-1.5-mini' },
   { id: 'inworld-tts-1-max', name: 'inworld-tts-1-max' },
   { id: 'inworld-tts-1', name: 'inworld-tts-1' },
+];
+
+// inworld-tts-2 is the only steerable model (style/vibe + delivery mode)
+const isTts2 = (modelId: string) => modelId === 'inworld-tts-2';
+
+// Delivery mode controls how varied the output is (inworld-tts-2 only).
+const DELIVERY_MODES = [
+  { id: 'BALANCED', name: 'Balanced', description: 'Default — balanced stability and variation' },
+  { id: 'STABLE', name: 'Stable', description: 'More consistent, predictable output' },
+  { id: 'CREATIVE', name: 'Creative', description: 'Increased emotional range and variation' },
+];
+
+// Style / vibe presets — natural-language steering instructions prepended in
+// [square brackets] before the text. inworld-tts-2 only.
+const VIBE_PRESETS: { id: string; label: string; emoji: string; instruction: string }[] = [
+  { id: 'none', label: 'No style', emoji: '⚪', instruction: '' },
+  { id: 'cheerful', label: 'Cheerful', emoji: '😄', instruction: 'say cheerfully with a bright upbeat tone' },
+  { id: 'excited', label: 'Excited', emoji: '🤩', instruction: 'overwhelmed with excitement and barely able to contain yourself' },
+  { id: 'calm', label: 'Calm', emoji: '😌', instruction: 'say calmly in a soft and soothing tone' },
+  { id: 'sad', label: 'Sad', emoji: '😢', instruction: 'slow and hushed with every word weighted by sadness' },
+  { id: 'angry', label: 'Angry', emoji: '😠', instruction: 'speak as if barely holding back rage forcing every word through gritted teeth' },
+  { id: 'whisper', label: 'Whisper', emoji: '🤫', instruction: 'whisper in a hushed style' },
+  { id: 'narration', label: 'Narrator', emoji: '🎙️', instruction: 'articulate clearly with deliberate pauses like a documentary narrator' },
+  { id: 'shout', label: 'Loud', emoji: '📣', instruction: 'very loud and energetic' },
+  { id: 'fast', label: 'Fast', emoji: '⚡', instruction: 'very fast' },
+  { id: 'slow', label: 'Slow', emoji: '🐢', instruction: 'very slow and deliberate' },
+  { id: 'playful', label: 'Playful', emoji: '😏', instruction: 'say playfully with a teasing tone' },
 ];
 
 type Provider = 'inworld';
@@ -46,8 +76,13 @@ export default function TextToSpeechGenerator() {
   const [provider, setProvider] = useState<Provider>('inworld');
   const [apiKey, setApiKey] = useState("");
   const [workspaceId, setWorkspaceId] = useState("");
-  const [selectedModel, setSelectedModel] = useState('inworld-tts-1.5-max');
+  const [selectedModel, setSelectedModel] = useState('inworld-tts-2');
   const [text, setText] = useState("");
+
+  // Style / vibe steering (inworld-tts-2 only)
+  const [vibePreset, setVibePreset] = useState('none');
+  const [customVibe, setCustomVibe] = useState("");
+  const [deliveryMode, setDeliveryMode] = useState('BALANCED');
   const [voices, setVoices] = useState<Voice[]>([]);
   const [selectedVoice, setSelectedVoice] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -209,6 +244,21 @@ export default function TextToSpeechGenerator() {
     return new Blob([byteArray], { type: mimeType });
   };
 
+  // Map a selected voice (by resource name) to the voiceId the TTS endpoint expects.
+  const resolveVoiceId = (voiceName: string): string => {
+    const v = voices.find((voice) => voice.name === voiceName);
+    if (v?.voiceId) return v.voiceId;
+    const parts = voiceName.split('/');
+    if (parts.length >= 4) return `${parts[1]}__${parts[3]}`;
+    return voiceName;
+  };
+
+  // Active style/vibe instruction (only meaningful for inworld-tts-2)
+  const getVibeInstruction = (): string => {
+    if (vibePreset === 'custom') return customVibe.trim();
+    return VIBE_PRESETS.find(v => v.id === vibePreset)?.instruction ?? '';
+  };
+
   const synthesizeText = async (textToSynthesize: string, voiceName: string): Promise<string | null> => {
     try {
       console.log('Synthesizing text:', textToSynthesize);
@@ -216,17 +266,24 @@ export default function TextToSpeechGenerator() {
       console.log('Provider:', provider);
 
       if (provider === 'inworld') {
+        const tts2 = isTts2(selectedModel);
+        const vibe = tts2 ? getVibeInstruction() : '';
+        // Steering tags are prepended in square brackets before the text.
+        const finalText = vibe ? `[${vibe}] ${textToSynthesize}` : textToSynthesize;
+
         const response = await fetch('/api/inworld/synthesize', {
           method: 'POST',
           headers: {
             'x-api-key': apiKey,
+            'x-voice-id': resolveVoiceId(voiceName),
             'x-voice-name': voiceName,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            text: textToSynthesize,
+            text: finalText,
             modelId: selectedModel,
-            timestampType: "WORD"
+            timestampType: "WORD",
+            ...(tts2 ? { deliveryMode } : {}),
           }),
         });
 
@@ -240,7 +297,8 @@ export default function TextToSpeechGenerator() {
         console.log('Synthesis response received');
 
         if (data.audioContent) {
-          const audioBlob = base64ToBlob(data.audioContent, 'audio/mp3');
+          // LINEAR16 responses are PCM/WAV (WAV header included by Inworld)
+          const audioBlob = base64ToBlob(data.audioContent, 'audio/wav');
           return URL.createObjectURL(audioBlob);
         }
       }
@@ -433,7 +491,7 @@ export default function TextToSpeechGenerator() {
     if (!audioItem.audioUrl) return;
     const a = document.createElement('a');
     a.href = audioItem.audioUrl;
-    a.download = `tts-audio-${audioItem.id}.mp3`;
+    a.download = `tts-audio-${audioItem.id}.wav`;
     a.click();
   };
 
@@ -1213,7 +1271,7 @@ export default function TextToSpeechGenerator() {
                 <option value="">Select a voice...</option>
                 {voices.map((voice) => (
                   <option key={voice.name} value={voice.name}>
-                    {getVoiceDisplayName(voice)}
+                    {voice.owned ? '★ ' : ''}{getVoiceDisplayName(voice)}{voice.owned ? ' (cloned)' : ''}
                   </option>
                 ))}
               </select>
@@ -1254,6 +1312,92 @@ export default function TextToSpeechGenerator() {
                   </div>
                 </div>
               </div>
+            )}
+          </div>
+
+          {/* Style & Vibe (inworld-tts-2 only) */}
+          <div className="bg-card border rounded-xl p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-lg flex items-center gap-2">
+                <Sparkles size={20} /> Style &amp; Vibe
+              </h2>
+              <span className="text-[10px] bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white px-1.5 py-0.5 rounded-full font-bold shadow-sm">
+                TTS-2
+              </span>
+            </div>
+
+            {isTts2(selectedModel) ? (
+              <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Vibe</label>
+                  <div className="flex flex-wrap gap-2">
+                    {VIBE_PRESETS.map((vibe) => (
+                      <button
+                        key={vibe.id}
+                        onClick={() => setVibePreset(vibe.id)}
+                        className={cn(
+                          "px-3 py-1.5 rounded-full text-xs border transition-colors flex items-center gap-1",
+                          vibePreset === vibe.id
+                            ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                            : "border-border hover:bg-accent"
+                        )}
+                      >
+                        <span>{vibe.emoji}</span>
+                        {vibe.label}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => setVibePreset('custom')}
+                      className={cn(
+                        "px-3 py-1.5 rounded-full text-xs border transition-colors flex items-center gap-1",
+                        vibePreset === 'custom'
+                          ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                          : "border-border hover:bg-accent"
+                      )}
+                    >
+                      <span>✏️</span>
+                      Custom
+                    </button>
+                  </div>
+
+                  {vibePreset === 'custom' && (
+                    <input
+                      type="text"
+                      value={customVibe}
+                      onChange={(e) => setCustomVibe(e.target.value)}
+                      className="w-full p-2 rounded-md border bg-background focus:outline-none focus:ring-2 focus:ring-primary animate-in fade-in"
+                      placeholder="e.g. cheerful and slightly breathless"
+                    />
+                  )}
+
+                  <p className="text-xs text-muted-foreground">
+                    Describe the delivery in plain English. It&apos;s sent as a steering tag before your text.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Delivery Mode</label>
+                  <select
+                    value={deliveryMode}
+                    onChange={(e) => setDeliveryMode(e.target.value)}
+                    className="w-full p-2 rounded-md border bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                  >
+                    {DELIVERY_MODES.map((mode) => (
+                      <option key={mode.id} value={mode.id}>
+                        {mode.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    {DELIVERY_MODES.find(m => m.id === deliveryMode)?.description}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Select the <span className="font-medium text-foreground">inworld-tts-2</span> model
+                to steer the voice with natural-language styles and delivery modes.
+              </p>
             )}
           </div>
 
@@ -1544,7 +1688,7 @@ export default function TextToSpeechGenerator() {
                           onClick={() => downloadAudio(audio)}
                           disabled={!audio.audioUrl || audio.isGenerating}
                           className="p-2 hover:bg-accent rounded-md text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
-                          title={`Download as ${audio.id}.mp3`}
+                          title={`Download as ${audio.id}.wav`}
                         >
                           <Download size={16} />
                         </button>

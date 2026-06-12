@@ -4,32 +4,44 @@ const INWORLD_TTS_API = 'https://api.inworld.ai/tts/v1';
 
 export async function POST(request: NextRequest) {
   const apiKey = request.headers.get('x-api-key');
+  const voiceIdHeader = request.headers.get('x-voice-id');
   const voiceName = request.headers.get('x-voice-name');
   const body = await request.json();
 
-  if (!apiKey || !voiceName) {
-    return NextResponse.json({ error: 'Missing API key or voice name' }, { status: 400 });
+  if (!apiKey || (!voiceIdHeader && !voiceName)) {
+    return NextResponse.json({ error: 'Missing API key or voice' }, { status: 400 });
   }
 
   try {
-    // Extract voice ID from the full resource name
-    // Format: "workspaces/default-rkexmpzbw6j-o9u1c8ztdw/voices/james_ultra"
-    // Need: "default-rkexmpzbw6j-o9u1c8ztdw__james_ultra"
-    const parts = voiceName.split('/');
-    const workspaceId = parts[1]; // "default-rkexmpzbw6j-o9u1c8ztdw"
-    const voiceShortName = parts[3]; // "james_ultra"
-    const voiceId = `${workspaceId}__${voiceShortName}`;
-    
+    // Prefer the explicit voiceId from the voices API (system voices like "Aanya"
+    // expose it directly). Fall back to deriving it from a full resource name
+    // ("workspaces/{ws}/voices/{short}" -> "{ws}__{short}").
+    let voiceId = voiceIdHeader || '';
+    if (!voiceId && voiceName) {
+      const parts = voiceName.split('/');
+      voiceId = parts.length >= 4 ? `${parts[1]}__${parts[3]}` : voiceName;
+    }
+
     const endpoint = `${INWORLD_TTS_API}/voice`;
     console.log('Synthesizing at:', endpoint);
     console.log('Voice ID:', voiceId);
     
-    const requestBody = {
+    const requestBody: Record<string, unknown> = {
       text: body.text,
       voiceId: voiceId,
       modelId: body.modelId || "inworld-tts-1",
-      timestampType: body.timestampType || "WORD"
+      audioConfig: body.audioConfig || {
+        audioEncoding: "LINEAR16",
+        sampleRateHertz: 22050,
+      },
+      applyTextNormalization: body.applyTextNormalization || "ON",
+      timestampType: body.timestampType || "WORD",
     };
+
+    // deliveryMode is only supported by inworld-tts-2 (replaces temperature)
+    if (body.deliveryMode) {
+      requestBody.deliveryMode = body.deliveryMode;
+    }
     
     console.log('=== SYNTHESIS REQUEST ===');
     console.log('Endpoint:', endpoint);

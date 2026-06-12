@@ -6,6 +6,7 @@ import ReceiptPreview from "@/components/receipt/ReceiptPreview";
 import { ReceiptData } from "@/components/receipt/ReceiptData";
 import { toPng } from "html-to-image";
 import { Download } from "lucide-react";
+import { ToolOpenTracker } from "@/components/OpenedToolsProvider";
 
 export default function ReceiptGeneratorPage() {
     const [receiptData, setReceiptData] = useState<ReceiptData>({
@@ -61,6 +62,7 @@ export default function ReceiptGeneratorPage() {
 
     return (
         <div className="space-y-8">
+            <ToolOpenTracker id="receipt-generator" />
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">
